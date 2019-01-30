@@ -1,0 +1,134 @@
+Parameters:
+  PEVERSION:
+    Type: String
+    Default: "2019.0.2"
+  KeyPair:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: yyyyy
+  Lifetime:
+    Type: String
+    Default: 1w
+  CreatedBy:
+    Type: String
+    Default: "you"
+  Department:
+    Type: String
+    Default: "TSE"
+  ProjectInfo:
+    Type: String
+    Default: "ACME Testing project"
+  InstanceSize:
+    Type: String
+    Default: "t2.xlarge"
+Mappings:
+  RegionMap:
+    us-east-1:
+      CENTOS7: ami-4bf3d731
+    us-east-2:
+      CENTOS7: ami-e1496384
+    us-west-1:
+      CENTOS7: ami-65e0e305
+    us-west-2:
+      CENTOS7: ami-a042f4d8
+    sa-east-1:
+      CENTOS7: ami-f9adef95
+    ca-central-1:
+      CENTOS7: ami-dcad28b8
+    eu-west-1:
+      CENTOS7: ami-6e28b517
+    eu-west-2:
+      CENTOS7: ami-ee6a718a
+    eu-west-3:
+      CENTOS7: ami-bfff49c2
+    eu-central-1:
+      CENTOS7: ami-337be65c
+    ap-southeast-1:
+      CENTOS7: ami-d2fa88ae
+    ap-southeast-2:
+      CENTOS7: ami-b6bb47d4
+    ap-northeast-1:
+      CENTOS7: ami-25bd2743
+    ap-northeast-2:
+      CENTOS7: ami-7248e81c
+    ap-south-1:
+      CENTOS7: ami-5d99ce32
+    cn-north-1:
+      CENTOS7: ami-8e6aa0e3
+Resources:
+  EC2:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", CENTOS7]  
+      InstanceType: !Ref InstanceSize
+      KeyName: !Ref KeyPair
+      # SecurityGroups: 
+      #   - !Ref SecurityGroup
+      BlockDeviceMappings: 
+          - DeviceName: "/dev/sdc"
+            Ebs: 
+              VolumeType: "io1"
+              Iops: 1000
+              DeleteOnTermination: true
+              VolumeSize: 50
+      Tags:
+        - 
+          Key: "created_by"
+          Value: !Ref CreatedBy
+        - 
+          Key: "department"
+          Value: !Ref Department
+        - 
+          Key: "project"
+          Value: !Ref ProjectInfo
+        - 
+          Key: "lifetime"
+          Value: !Ref Lifetime 
+        -
+          Key: "Name"
+          Value: !Ref "AWS::StackName"
+      UserData:
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash
+            echo "hello"
+            yum update -y
+            yum install -y epel-release
+            yum install -y https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.amzn1.noarch.rpm
+            ln -s /usr/local/lib/python2.7/site-packages/cfnbootstrap /usr/lib/python2.7/site-packages/cfnbootstrap
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EC2 --configsets PE --region ${AWS::Region}
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          PE:
+            - "configure_cfn"
+            #- "install_wordpress"
+            #- "config_wordpress"
+        configure_cfn:
+          files:
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.EC2.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EC2 --configsets pe --region ${AWS::Region}
+              mode: "000400"
+              owner: root
+              group: root
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                verbose=true
+                interval=5
+              mode: "000400"
+              owner: root
+              group: root
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: "true"
+                ensureRunning: "true"
+                files:
+                  - "/etc/cfn/cfn-hup.conf"
+                  - "/etc/cfn/hooks.d/cfn-auto-reloader.conf"
